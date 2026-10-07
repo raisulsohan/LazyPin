@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "APP=%~dp0PinToTop.exe"
+set "APP=%~dp0LazyPin.exe"
 if exist "%APP%" (
   start "" "%APP%"
   exit /b 0
@@ -11,5 +11,5 @@ if not exist "%POWERSHELL%" (
   pause
   exit /b 1
 )
-start "" "%POWERSHELL%" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0PinToTop.ps1"
+start "" "%POWERSHELL%" -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0LazyPin.ps1"
 endlocal

@@ -7,11 +7,11 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptDir
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host " Building Pin to top Executable & Setup " -ForegroundColor Cyan
+Write-Host "   Building LazyPin Executable & Setup  " -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-# 1. Compile PinToTop.ps1 -> PinToTop.exe using ps2exe
-Write-Host "`n[1/2] Compiling PinToTop.exe..." -ForegroundColor Yellow
+# 1. Compile LazyPin.ps1 -> LazyPin.exe using ps2exe
+Write-Host "`n[1/2] Compiling LazyPin.exe..." -ForegroundColor Yellow
 
 $ps2exePath = $null
 $moduleCandidates = @(
@@ -40,13 +40,13 @@ if ($ps2exePath) {
 }
 
 $ps2exeParams = @{
-    inputFile         = Join-Path $scriptDir "PinToTop.ps1"
-    outputFile        = Join-Path $scriptDir "PinToTop.exe"
-    iconFile          = Join-Path $scriptDir "PinToTop.ico"
-    title             = "Pin to top"
-    description       = "Pin to top - Always on top title bar pin button by Raisul Sohan"
+    inputFile         = Join-Path $scriptDir "LazyPin.ps1"
+    outputFile        = Join-Path $scriptDir "LazyPin.exe"
+    iconFile          = Join-Path $scriptDir "LazyPin.ico"
+    title             = "LazyPin"
+    description       = "LazyPin - Always on top title bar pin button by Raisul Sohan"
     company           = "Raisul Sohan"
-    product           = "Pin to top"
+    product           = "LazyPin"
     copyright         = "Copyright (c) 2026 Raisul Sohan. All rights reserved."
     version           = "1.0.3.0"
     noConsole         = $true
@@ -57,13 +57,13 @@ $ps2exeParams = @{
 
 Invoke-ps2exe @ps2exeParams
 
-if (-not (Test-Path (Join-Path $scriptDir "PinToTop.exe"))) {
-    throw "Failed to produce PinToTop.exe"
+if (-not (Test-Path (Join-Path $scriptDir "LazyPin.exe"))) {
+    throw "Failed to produce LazyPin.exe"
 }
-Write-Host "PinToTop.exe built successfully!" -ForegroundColor Green
+Write-Host "LazyPin.exe built successfully!" -ForegroundColor Green
 
-# 2. Compile PinToTopSetup.iss -> PinToTopSetup.exe using Inno Setup
-Write-Host "`n[2/2] Compiling Inno Setup Installer (PinToTopSetup.exe)..." -ForegroundColor Yellow
+# 2. Compile LazyPinSetup.iss -> LazyPinSetup.exe using Inno Setup
+Write-Host "`n[2/2] Compiling Inno Setup Installer (LazyPinSetup.exe)..." -ForegroundColor Yellow
 
 $isccCandidates = @(
     "$env:LOCALAPPDATA\Programs\InnoSetup\ISCC.exe",
@@ -92,12 +92,12 @@ if (-not $isccPath) {
 }
 
 Write-Host "Using ISCC: $isccPath" -ForegroundColor DarkGray
-& $isccPath (Join-Path $scriptDir "PinToTopSetup.iss")
+& $isccPath (Join-Path $scriptDir "LazyPinSetup.iss")
 
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "`n========================================" -ForegroundColor Green
-Write-Host " SUCCESS! PinToTopSetup.exe is ready!   " -ForegroundColor Green
+Write-Host "  SUCCESS! LazyPinSetup.exe is ready!   " -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green

@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Pin to top - Keep any window always on top with a seamless native title-bar pin button.
+    LazyPin - Keep any window always on top with a seamless native title-bar pin button.
 
 .DESCRIPTION
     A lightweight Windows utility for Windows 10 & 11 that places an always-on-top toggle
@@ -10,7 +10,7 @@
     Raisul Sohan (https://github.com/raisulsohan)
 
 .LINK
-    https://github.com/raisulsohan/PinToTop
+    https://github.com/raisulsohan/LazyPin
 
 .COPYRIGHT
     Copyright (c) 2026 Raisul Sohan. All rights reserved.
@@ -27,7 +27,7 @@ $script:applicationDirectory = Split-Path -Parent $script:executablePath
 if ([System.IO.Path]::GetFileNameWithoutExtension($script:executablePath) -match '^(powershell|pwsh)$' -and $script:scriptPath) {
     $script:applicationDirectory = Split-Path -Parent $script:scriptPath
 }
-$script:iconPath = Join-Path $script:applicationDirectory 'PinToTop.ico'
+$script:iconPath = Join-Path $script:applicationDirectory 'LazyPin.ico'
 $script:applicationIcon = [System.Drawing.SystemIcons]::Application
 if (Test-Path -LiteralPath $script:iconPath) {
     try { $script:applicationIcon = [System.Drawing.Icon]::new($script:iconPath) } catch { }
@@ -39,7 +39,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace PinToTop
+namespace LazyPin
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
@@ -447,7 +447,7 @@ Add-Type -TypeDefinition $nativeCode -ReferencedAssemblies $formsAssemblyPath
 
 try {
     # Per-monitor positioning keeps the overlay aligned on mixed-DPI displays.
-    [void][PinToTop.NativeMethods]::SetProcessDpiAwarenessContext([IntPtr](-4))
+    [void][LazyPin.NativeMethods]::SetProcessDpiAwarenessContext([IntPtr](-4))
 } catch {
     # Older Windows versions may not expose this API.
 }
@@ -455,7 +455,7 @@ try {
 $script:mutex = $null
 $createdNew = $false
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$mutexName = "Local\PinToTop-$sid"
+$mutexName = "Local\LazyPin-$sid"
 $script:mutex = [System.Threading.Mutex]::new($true, $mutexName, [ref]$createdNew)
 if (-not $createdNew) {
     $script:mutex.Dispose()
@@ -496,7 +496,7 @@ $script:sampleBurstUntil = [long]0
 $script:sampleBurstMs = 600
 $script:sampleMaxAgeMs = 1000
 
-$overlay = [PinToTop.OverlayWindow]::new()
+$overlay = [LazyPin.OverlayWindow]::new()
 $overlay.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
 $overlay.ShowInTaskbar = $false
 $overlay.Icon = $script:applicationIcon
@@ -561,28 +561,28 @@ $overlay.Add_MouseClick({
     param($sender, $eventArgs)
     if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
     $hwnd = $script:targetHwnd
-    if ($hwnd -eq [IntPtr]::Zero -or -not [PinToTop.NativeMethods]::IsWindow($hwnd)) { return }
+    if ($hwnd -eq [IntPtr]::Zero -or -not [LazyPin.NativeMethods]::IsWindow($hwnd)) { return }
     # SetWindowPos on a foreign window is synchronous; a hung target would block this tool too.
-    if ([PinToTop.NativeMethods]::IsHungAppWindow($hwnd)) { return }
+    if ([LazyPin.NativeMethods]::IsHungAppWindow($hwnd)) { return }
     if ($script:pinnedHwnd -ne $hwnd) {
-        $currentForeground = [PinToTop.NativeMethods]::GetAncestor(
-            [PinToTop.NativeMethods]::GetForegroundWindow(),
-            [PinToTop.NativeMethods]::GA_ROOT
+        $currentForeground = [LazyPin.NativeMethods]::GetAncestor(
+            [LazyPin.NativeMethods]::GetForegroundWindow(),
+            [LazyPin.NativeMethods]::GA_ROOT
         )
         if ($currentForeground -ne $hwnd) { return }
     }
 
-    $style = [PinToTop.NativeMethods]::GetWindowLongPtr($hwnd, [PinToTop.NativeMethods]::GWL_EXSTYLE).ToInt64()
-    $alreadyTopmost = (($style -band [PinToTop.NativeMethods]::WS_EX_TOPMOST) -ne 0)
-    $insertAfter = if ($alreadyTopmost) { [PinToTop.NativeMethods]::HWND_NOTOPMOST } else { [PinToTop.NativeMethods]::HWND_TOPMOST }
-    $ok = [PinToTop.NativeMethods]::SetWindowPos(
+    $style = [LazyPin.NativeMethods]::GetWindowLongPtr($hwnd, [LazyPin.NativeMethods]::GWL_EXSTYLE).ToInt64()
+    $alreadyTopmost = (($style -band [LazyPin.NativeMethods]::WS_EX_TOPMOST) -ne 0)
+    $insertAfter = if ($alreadyTopmost) { [LazyPin.NativeMethods]::HWND_NOTOPMOST } else { [LazyPin.NativeMethods]::HWND_TOPMOST }
+    $ok = [LazyPin.NativeMethods]::SetWindowPos(
         $hwnd,
         $insertAfter,
         0,
         0,
         0,
         0,
-        [PinToTop.NativeMethods]::SWP_NOMOVE -bor [PinToTop.NativeMethods]::SWP_NOSIZE -bor [PinToTop.NativeMethods]::SWP_NOACTIVATE
+        [LazyPin.NativeMethods]::SWP_NOMOVE -bor [LazyPin.NativeMethods]::SWP_NOSIZE -bor [LazyPin.NativeMethods]::SWP_NOACTIVATE
     )
     if ($ok) {
         $script:isPinned = -not $alreadyTopmost
@@ -599,7 +599,7 @@ $overlay.Add_MouseClick({
 })
 
 $startupFolder = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Startup)
-$startupLink = Join-Path $startupFolder 'Pin to top.lnk'
+$startupLink = Join-Path $startupFolder 'LazyPin.lnk'
 $trayMenu = [System.Windows.Forms.ContextMenuStrip]::new()
 $startupItem = [System.Windows.Forms.ToolStripMenuItem]::new('Run at Windows startup')
 $startupItem.Checked = Test-Path -LiteralPath $startupLink
@@ -607,11 +607,11 @@ $null = $trayMenu.Items.Add($startupItem)
 
 $null = $trayMenu.Items.Add([System.Windows.Forms.ToolStripSeparator]::new())
 
-$aboutItem = [System.Windows.Forms.ToolStripMenuItem]::new('About Pin to top')
+$aboutItem = [System.Windows.Forms.ToolStripMenuItem]::new('About LazyPin')
 $aboutItem.Add_Click({
     [System.Windows.Forms.MessageBox]::Show(
-        "Pin to top v1.0.3`n`nDeveloper: Raisul Sohan`nGitHub: https://github.com/raisulsohan/PinToTop`n`nA lightweight utility to keep any window always on top.",
-        "About Pin to top",
+        "LazyPin v1.0.3`n`nDeveloper: Raisul Sohan`nGitHub: https://github.com/raisulsohan/LazyPin`n`nA lightweight utility to keep any window always on top.",
+        "About LazyPin",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
     )
@@ -640,7 +640,7 @@ $startupItem.Add_Click({
             $shortcut.Arguments = ''
             $shortcut.WorkingDirectory = Split-Path -Parent $appPath
         }
-        $shortcut.Description = 'Show the always-on-top button beside window controls'
+        $shortcut.Description = 'Keep any window always on top with LazyPin'
         $shortcut.Save()
         $startupItem.Checked = $true
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($shortcut) | Out-Null
@@ -650,14 +650,14 @@ $startupItem.Add_Click({
 
 $trayIcon = [System.Windows.Forms.NotifyIcon]::new()
 $trayIcon.Icon = $script:applicationIcon
-$trayIcon.Text = 'Pin to top v1.0.3 by Raisul Sohan'
+$trayIcon.Text = 'LazyPin v1.0.3 by Raisul Sohan'
 $trayIcon.ContextMenuStrip = $trayMenu
 $trayIcon.Visible = $true
 $appContext = [System.Windows.Forms.ApplicationContext]::new()
 $exitItem.Add_Click({
     $script:shuttingDown = $true
     $overlay.Hide()
-    [PinToTop.NativeMethods]::StopWindowLocationTracking()
+    [LazyPin.NativeMethods]::StopWindowLocationTracking()
     $trayIcon.Visible = $false
     $appContext.ExitThread()
 })
@@ -670,9 +670,9 @@ $timer.Add_Tick({
 
     $hwnd = [IntPtr]::Zero
     if ($script:pinnedHwnd -ne [IntPtr]::Zero) {
-        if ([PinToTop.NativeMethods]::IsWindow($script:pinnedHwnd)) {
-            $pinnedStyle = [PinToTop.NativeMethods]::GetWindowLongPtr($script:pinnedHwnd, [PinToTop.NativeMethods]::GWL_EXSTYLE).ToInt64()
-            if (($pinnedStyle -band [PinToTop.NativeMethods]::WS_EX_TOPMOST) -ne 0) {
+        if ([LazyPin.NativeMethods]::IsWindow($script:pinnedHwnd)) {
+            $pinnedStyle = [LazyPin.NativeMethods]::GetWindowLongPtr($script:pinnedHwnd, [LazyPin.NativeMethods]::GWL_EXSTYLE).ToInt64()
+            if (($pinnedStyle -band [LazyPin.NativeMethods]::WS_EX_TOPMOST) -ne 0) {
                 $hwnd = $script:pinnedHwnd
             }
         }
@@ -683,47 +683,47 @@ $timer.Add_Tick({
     }
 
     if ($hwnd -eq [IntPtr]::Zero) {
-        $foreground = [PinToTop.NativeMethods]::GetForegroundWindow()
-        $hwnd = [PinToTop.NativeMethods]::GetAncestor($foreground, [PinToTop.NativeMethods]::GA_ROOT)
+        $foreground = [LazyPin.NativeMethods]::GetForegroundWindow()
+        $hwnd = [LazyPin.NativeMethods]::GetAncestor($foreground, [LazyPin.NativeMethods]::GA_ROOT)
         if ($hwnd -eq [IntPtr]::Zero) { $hwnd = $foreground }
     }
 
     $processId = [uint32]0
-    [void][PinToTop.NativeMethods]::GetWindowThreadProcessId($hwnd, [ref]$processId)
+    [void][LazyPin.NativeMethods]::GetWindowThreadProcessId($hwnd, [ref]$processId)
     if ($hwnd -eq [IntPtr]::Zero -or
         $processId -eq [uint32]$PID -or
-        -not [PinToTop.NativeMethods]::IsWindow($hwnd) -or
-        -not [PinToTop.NativeMethods]::IsWindowVisible($hwnd) -or
-        [PinToTop.NativeMethods]::IsIconic($hwnd)) {
+        -not [LazyPin.NativeMethods]::IsWindow($hwnd) -or
+        -not [LazyPin.NativeMethods]::IsWindowVisible($hwnd) -or
+        [LazyPin.NativeMethods]::IsIconic($hwnd)) {
         if ($overlay.Visible) { $overlay.Hide() }
         $script:targetHwnd = [IntPtr]::Zero
-        [void][PinToTop.NativeMethods]::TrackWindowLocation([IntPtr]::Zero, [IntPtr]::Zero, 0, 0, 0, 0)
+        [void][LazyPin.NativeMethods]::TrackWindowLocation([IntPtr]::Zero, [IntPtr]::Zero, 0, 0, 0, 0)
         return
     }
 
-    $windowRect = [PinToTop.RECT]::new()
-    $captionRect = [PinToTop.RECT]::new()
-    $visibleRect = [PinToTop.RECT]::new()
-    $windowOk = [PinToTop.NativeMethods]::GetWindowRect($hwnd, [ref]$windowRect)
-    $captionResult = [PinToTop.NativeMethods]::DwmGetWindowAttribute(
+    $windowRect = [LazyPin.RECT]::new()
+    $captionRect = [LazyPin.RECT]::new()
+    $visibleRect = [LazyPin.RECT]::new()
+    $windowOk = [LazyPin.NativeMethods]::GetWindowRect($hwnd, [ref]$windowRect)
+    $captionResult = [LazyPin.NativeMethods]::DwmGetWindowAttribute(
         $hwnd,
-        [PinToTop.NativeMethods]::DWMWA_CAPTION_BUTTON_BOUNDS,
+        [LazyPin.NativeMethods]::DWMWA_CAPTION_BUTTON_BOUNDS,
         [ref]$captionRect,
-        [System.Runtime.InteropServices.Marshal]::SizeOf([type][PinToTop.RECT])
+        [System.Runtime.InteropServices.Marshal]::SizeOf([type][LazyPin.RECT])
     )
 
     if (-not $windowOk) {
         if ($overlay.Visible) { $overlay.Hide() }
         $script:targetHwnd = [IntPtr]::Zero
-        [void][PinToTop.NativeMethods]::TrackWindowLocation([IntPtr]::Zero, [IntPtr]::Zero, 0, 0, 0, 0)
+        [void][LazyPin.NativeMethods]::TrackWindowLocation([IntPtr]::Zero, [IntPtr]::Zero, 0, 0, 0, 0)
         return
     }
     $visibleRect = $windowRect
-    if ([PinToTop.NativeMethods]::DwmGetWindowAttribute(
+    if ([LazyPin.NativeMethods]::DwmGetWindowAttribute(
         $hwnd,
-        [PinToTop.NativeMethods]::DWMWA_EXTENDED_FRAME_BOUNDS,
+        [LazyPin.NativeMethods]::DWMWA_EXTENDED_FRAME_BOUNDS,
         [ref]$visibleRect,
-        [System.Runtime.InteropServices.Marshal]::SizeOf([type][PinToTop.RECT])
+        [System.Runtime.InteropServices.Marshal]::SizeOf([type][LazyPin.RECT])
     ) -ne 0) {
         $visibleRect = $windowRect
     }
@@ -734,7 +734,7 @@ $timer.Add_Tick({
         $captionRect.Left -lt ($windowRect.Right - $windowRect.Left)
 
     $dpi = 96
-    try { $dpi = [PinToTop.NativeMethods]::GetDpiForWindow($hwnd) } catch { }
+    try { $dpi = [LazyPin.NativeMethods]::GetDpiForWindow($hwnd) } catch { }
     if (-not $dpi -or $dpi -lt 48) { $dpi = 96 }
     $scale = [double]$dpi / 96.0
     $gap = [int][Math]::Round($script:buttonGap * $scale)
@@ -744,24 +744,24 @@ $timer.Add_Tick({
     $captionHeight = [int][Math]::Round(34 * $scale)
     $topBase = $visibleRect.Top
 
-    $windowStyle = [PinToTop.NativeMethods]::GetWindowLongPtr($hwnd, [PinToTop.NativeMethods]::GWL_STYLE).ToInt64()
+    $windowStyle = [LazyPin.NativeMethods]::GetWindowLongPtr($hwnd, [LazyPin.NativeMethods]::GWL_STYLE).ToInt64()
     $isMaximized = (($windowStyle -band 0x01000000L) -ne 0) # WS_MAXIMIZE
-    $hasCaption = (($windowStyle -band [PinToTop.NativeMethods]::WS_CAPTION) -ne 0)
+    $hasCaption = (($windowStyle -band [LazyPin.NativeMethods]::WS_CAPTION) -ne 0)
     $topBorderInset = if ($isMaximized) { 0 } else { [int][Math]::Max(1, [Math]::Round(1.0 * $scale)) }
 
     # A caption-less window that fills the monitor is a full-screen game, video or
     # F11 browser. Keeping a topmost overlay over it disables full-screen
     # optimisations and stutters that app, and it has no title bar to pin anyway.
-    if (-not $hasCaption -and -not $isMaximized -and [PinToTop.NativeMethods]::CoversMonitor($hwnd, $windowRect)) {
+    if (-not $hasCaption -and -not $isMaximized -and [LazyPin.NativeMethods]::CoversMonitor($hwnd, $windowRect)) {
         if ($overlay.Visible) { $overlay.Hide() }
         $script:targetHwnd = [IntPtr]::Zero
-        [void][PinToTop.NativeMethods]::TrackWindowLocation([IntPtr]::Zero, [IntPtr]::Zero, 0, 0, 0, 0)
+        [void][LazyPin.NativeMethods]::TrackWindowLocation([IntPtr]::Zero, [IntPtr]::Zero, 0, 0, 0, 0)
         return
     }
 
     if ($hasCaption) {
-        $clientOrigin = [PinToTop.POINT]::new()
-        if ([PinToTop.NativeMethods]::ClientToScreen($hwnd, [ref]$clientOrigin)) {
+        $clientOrigin = [LazyPin.POINT]::new()
+        if ([LazyPin.NativeMethods]::ClientToScreen($hwnd, [ref]$clientOrigin)) {
             $measuredCaption = $clientOrigin.Y - $windowRect.Top
             if ($measuredCaption -gt 0 -and $measuredCaption -lt [int](72 * $scale)) {
                 $captionHeight = [Math]::Max($captionHeight, $measuredCaption)
@@ -811,7 +811,7 @@ $timer.Add_Tick({
         $needProbe = $true
     }
     if ($needProbe) {
-        $script:controlsCacheValue = [PinToTop.NativeMethods]::DetectControlsWidth($hwnd, $visibleRect, $captionHeight, $scale, $baseControlsWidth)
+        $script:controlsCacheValue = [LazyPin.NativeMethods]::DetectControlsWidth($hwnd, $visibleRect, $captionHeight, $scale, $baseControlsWidth)
         $script:controlsCacheHwnd = $hwnd
         $script:controlsCacheKey = $probeKey
         $script:controlsProbeTime = $now
@@ -845,7 +845,7 @@ $timer.Add_Tick({
     # colour only changes when the target or the focused window changes (active /
     # inactive caption), so sample in a short burst around those events (the
     # activation animation needs a few frames to settle) and otherwise slowly.
-    $foregroundNow = [PinToTop.NativeMethods]::GetForegroundWindow()
+    $foregroundNow = [LazyPin.NativeMethods]::GetForegroundWindow()
     if ($hwnd -ne $script:sampleHwnd -or $foregroundNow -ne $script:sampleForeground) {
         $script:sampleHwnd = $hwnd
         $script:sampleForeground = $foregroundNow
@@ -854,10 +854,10 @@ $timer.Add_Tick({
     $shouldSample = ($now -le $script:sampleBurstUntil) -or (($now - $script:sampleTime) -ge $script:sampleMaxAgeMs)
     if ($shouldSample) {
         $script:sampleTime = $now
-        $dc = [PinToTop.NativeMethods]::GetDC([IntPtr]::Zero)
+        $dc = [LazyPin.NativeMethods]::GetDC([IntPtr]::Zero)
         if ($dc -ne [IntPtr]::Zero) {
-            $pixel = [PinToTop.NativeMethods]::GetPixel($dc, $sampleX, $sampleY)
-            [void][PinToTop.NativeMethods]::ReleaseDC([IntPtr]::Zero, $dc)
+            $pixel = [LazyPin.NativeMethods]::GetPixel($dc, $sampleX, $sampleY)
+            [void][LazyPin.NativeMethods]::ReleaseDC([IntPtr]::Zero, $dc)
             if ($pixel -ne [uint32]::MaxValue) {
                 $pixelValue = [long]$pixel
                 $sampled = [System.Drawing.Color]::FromArgb(
@@ -894,8 +894,8 @@ $timer.Add_Tick({
     $bounds = [System.Drawing.Rectangle]::new($x, $y, $buttonWidth, $buttonHeight)
 
     $script:targetHwnd = $hwnd
-    $style = [PinToTop.NativeMethods]::GetWindowLongPtr($hwnd, [PinToTop.NativeMethods]::GWL_EXSTYLE).ToInt64()
-    $pinnedNow = (($style -band [PinToTop.NativeMethods]::WS_EX_TOPMOST) -ne 0)
+    $style = [LazyPin.NativeMethods]::GetWindowLongPtr($hwnd, [LazyPin.NativeMethods]::GWL_EXSTYLE).ToInt64()
+    $pinnedNow = (($style -band [LazyPin.NativeMethods]::WS_EX_TOPMOST) -ne 0)
     if ($pinnedNow -ne $script:isPinned -or $script:stateHwnd -ne $hwnd) {
         $script:isPinned = $pinnedNow
         $script:stateHwnd = $hwnd
@@ -908,14 +908,14 @@ $timer.Add_Tick({
             $overlay.Size = $bounds.Size
         }
         if (-not $overlay.Visible) { $overlay.Show() }
-        [void][PinToTop.NativeMethods]::SetWindowPos(
+        [void][LazyPin.NativeMethods]::SetWindowPos(
             $overlay.Handle,
-            [PinToTop.NativeMethods]::HWND_TOPMOST,
+            [LazyPin.NativeMethods]::HWND_TOPMOST,
             $bounds.X,
             $bounds.Y,
             $bounds.Width,
             $bounds.Height,
-            [PinToTop.NativeMethods]::SWP_NOACTIVATE -bor [PinToTop.NativeMethods]::SWP_SHOWWINDOW
+            [LazyPin.NativeMethods]::SWP_NOACTIVATE -bor [LazyPin.NativeMethods]::SWP_SHOWWINDOW
         )
         $script:lastBounds = $bounds
     }
@@ -925,7 +925,7 @@ $timer.Add_Tick({
     # an unconditional SetWindowPos every tick forces a z-order pass and a DWM
     # recomposition 30 times a second.
     if ($overlay.Visible) {
-        [void][PinToTop.NativeMethods]::TrackWindowLocation(
+        [void][LazyPin.NativeMethods]::TrackWindowLocation(
             $hwnd,
             $overlay.Handle,
             $bounds.X - $windowRect.Right,
@@ -933,15 +933,15 @@ $timer.Add_Tick({
             $bounds.Width,
             $bounds.Height
         )
-        if ([PinToTop.NativeMethods]::IsTargetAboveOverlay($hwnd, $overlay.Handle)) {
-            [void][PinToTop.NativeMethods]::SetWindowPos(
+        if ([LazyPin.NativeMethods]::IsTargetAboveOverlay($hwnd, $overlay.Handle)) {
+            [void][LazyPin.NativeMethods]::SetWindowPos(
                 $overlay.Handle,
-                [PinToTop.NativeMethods]::HWND_TOPMOST,
+                [LazyPin.NativeMethods]::HWND_TOPMOST,
                 0,
                 0,
                 0,
                 0,
-                [PinToTop.NativeMethods]::SWP_NOMOVE -bor [PinToTop.NativeMethods]::SWP_NOSIZE -bor [PinToTop.NativeMethods]::SWP_NOACTIVATE
+                [LazyPin.NativeMethods]::SWP_NOMOVE -bor [LazyPin.NativeMethods]::SWP_NOSIZE -bor [LazyPin.NativeMethods]::SWP_NOACTIVATE
             )
         }
     }
@@ -960,7 +960,7 @@ $appContext.Add_ThreadExit({
     $trayIcon.Dispose()
     $trayMenu.Dispose()
     $overlay.Dispose()
-    [PinToTop.NativeMethods]::StopWindowLocationTracking()
+    [LazyPin.NativeMethods]::StopWindowLocationTracking()
     $pinFont.Dispose()
     $buttonTooltip.Dispose()
     if ($script:mutex) {
