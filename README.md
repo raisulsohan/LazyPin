@@ -8,6 +8,15 @@
 [![Developer](https://img.shields.io/badge/developer-Raisul%20Sohan-FF6F00?style=flat-square)](https://github.com/raisulsohan)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blueviolet?style=flat-square)](LICENSE)
 
+<p align="center">
+  <img src="demo/lazypin-demo.gif" alt="LazyPin Demo Animation" width="100%" />
+</p>
+
+<p align="center">
+  <em>⚡ Seamless Always-on-Top title bar integration in action.</em><br>
+  <a href="demo/lazypin-demo.html">🎮 <b>Open Interactive 10s Demo Player with Audio</b></a>
+</p>
+
 ---
 
 ## ✨ Features
