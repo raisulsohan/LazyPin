@@ -43,7 +43,7 @@ Download **`LazyPinSetup.exe`** from the [Latest Release](https://github.com/rai
 4. **Uninstall anytime**: Can be cleanly uninstalled from Windows **Settings > Apps > Installed apps**.
 
 ### Option 2: Portable
-1. Download **`LazyPin-v1.0.3-portable.zip`** from [Releases](https://github.com/raisulsohan/LazyPin/releases/latest).
+1. Download **`LazyPin-v1.0.4-portable.zip`** from [Releases](https://github.com/raisulsohan/LazyPin/releases/latest).
 2. Extract the archive and double-click `LazyPin.exe` (or `Start LazyPin.cmd`).
 
 ---
@@ -81,6 +81,17 @@ or run via PowerShell:
 .\Build.ps1
 ```
 This automatically compiles `LazyPin.exe` and packages `LazyPinSetup.exe` in the root folder.
+
+---
+
+## 📝 Changelog
+
+### v1.0.4
+- **Fixed**: the pin button no longer attaches itself to the taskbar (beside the clock), Start menu, Task View, desktop or other Windows shell surfaces when they take focus. The taskbar is a permanently always-on-top window, so the button used to appear there in its "pinned" colour, and clicking it could un-top the taskbar.
+- **Fixed**: a pinned window that is minimised, or that lives on another virtual desktop, no longer makes the button disappear from every other window.
+- **Fixed**: focusing an always-on-top window now moves the button to it, so a pinned window can always be unpinned simply by focusing it.
+- **Fixed**: exiting LazyPin restores the normal z-order of the window it pinned, and a close request from Windows, the installer or `taskkill` shuts the tool down cleanly (no ghost tray icon).
+- **Fixed**: the installer removes the leftovers of the old "Pin to top" build, which could start alongside LazyPin at sign-in and show a second pin button.
 
 ---
 

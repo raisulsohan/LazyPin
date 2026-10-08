@@ -36,6 +36,7 @@ if (Test-Path -LiteralPath $script:iconPath) {
 $nativeCode = @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -98,10 +99,13 @@ namespace LazyPin
         public const int GWL_STYLE = -16;
         public const long WS_EX_TOPMOST = 0x00000008L;
         public const long WS_CAPTION = 0x00C00000L;
+        public const long WS_EX_TOOLWINDOW = 0x00000080L;
+        public const int DWMWA_CLOAKED = 14;
         public const uint SWP_NOSIZE = 0x0001;
         public const uint SWP_NOMOVE = 0x0002;
         public const uint SWP_NOACTIVATE = 0x0010;
         public const uint SWP_SHOWWINDOW = 0x0040;
+        public const uint SWP_ASYNCWINDOWPOS = 0x4000;
         public const uint GA_ROOT = 2;
         public const int DWMWA_CAPTION_BUTTON_BOUNDS = 5;
         public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
@@ -403,6 +407,93 @@ namespace LazyPin
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+        // Root window classes of the Windows shell and its flyouts. They become the
+        // foreground window when the user clicks them (clock, tray, Start, Task View,
+        // desktop) but have no title bar to put a pin on, and the taskbar is permanently
+        // TOPMOST, so the button used to park itself beside the clock drawing the
+        // "pinned" glyph.
+        private static readonly string[] shellWindowClasses = new string[]
+        {
+            "Shell_TrayWnd",                          // taskbar
+            "Shell_SecondaryTrayWnd",                 // taskbar on other monitors
+            "TrayNotifyWnd",
+            "NotifyIconOverflowWindow",               // Win10 tray overflow
+            "TopLevelWindowForOverflowXamlIsland",    // Win11 tray overflow
+            "Shell_InputSwitchTopLevelWindow",        // language / keyboard flyout
+            "Progman",                                // desktop
+            "WorkerW",                                // desktop (wallpaper host)
+            "Windows.UI.Core.CoreWindow",             // Start, Search, Notification Centre, Quick Settings, Widgets, emoji panel
+            "XamlExplorerHostIslandWindow",           // Win11 Task View, Alt+Tab, snap layouts
+            "MultitaskingViewFrame",                  // Win10 Task View
+            "TaskSwitcherWnd",                        // classic Alt+Tab
+            "TaskSwitcherOverlayWnd",
+            "TaskListThumbnailWnd",                   // taskbar thumbnails
+            "ForegroundStaging",
+            "ImmersiveLauncher",                      // Win8 Start
+            "ApplicationManager_DesktopShellWindow",
+            "NativeHWNDHost",                         // volume / brightness OSD host
+            "Xaml_WindowedPopupClass",                // XAML popups
+            "#32768",                                 // Win32 menus
+            "tooltips_class32",
+            "IME",
+            "MSCTFIME UI"
+        };
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern int GetClassName(IntPtr hwnd, StringBuilder buffer, int maxCount);
+
+        [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+        private static extern int DwmGetWindowAttributeInt(IntPtr hwnd, int attribute, out int value, int valueSize);
+
+        public static string GetWindowClass(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return string.Empty;
+            StringBuilder buffer = new StringBuilder(256);
+            int length = GetClassName(hwnd, buffer, buffer.Capacity);
+            return length > 0 ? buffer.ToString(0, length) : string.Empty;
+        }
+
+        public static bool IsTopmost(IntPtr hwnd)
+        {
+            return (GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64() & WS_EX_TOPMOST) != 0;
+        }
+
+        // Cloaked windows exist and pass IsWindowVisible, but DWM does not draw them:
+        // windows on another virtual desktop and suspended UWP apps. Nothing to pin to.
+        public static bool IsCloaked(IntPtr hwnd)
+        {
+            int cloaked;
+            int hr = DwmGetWindowAttributeInt(hwnd, DWMWA_CLOAKED, out cloaked, sizeof(int));
+            return hr == 0 && cloaked != 0;
+        }
+
+        public static bool IsShellOrSystemWindow(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return true;
+            long exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
+            // Tool windows (floating palettes, flyouts, the taskbar itself) have no caption buttons.
+            if ((exStyle & WS_EX_TOOLWINDOW) != 0) return true;
+            string className = GetWindowClass(hwnd);
+            for (int i = 0; i < shellWindowClasses.Length; i++)
+            {
+                if (string.Equals(className, shellWindowClasses[i], StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        // A window the pin button may attach to: a real, visible, drawn, top-level
+        // application window that is neither ours nor part of the shell.
+        public static bool IsEligibleTarget(IntPtr hwnd, uint ownProcessId)
+        {
+            if (hwnd == IntPtr.Zero || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd)) return false;
+            uint processId;
+            GetWindowThreadProcessId(hwnd, out processId);
+            if (processId == ownProcessId) return false;
+            if (IsShellOrSystemWindow(hwnd)) return false;
+            if (IsCloaked(hwnd)) return false;
+            return true;
+        }
     }
 
     public class OverlayWindow : Form
@@ -430,11 +521,34 @@ namespace LazyPin
             }
         }
 
+        // Raised when Windows, the installer (Restart Manager) or "taskkill" without /F
+        // asks this process to close. The script shuts the whole tool down in response.
+        public event EventHandler ExitRequested;
+
+        private const int WM_CLOSE = 0x0010;
+        private const int WM_ENDSESSION = 0x0016;
+
+        private void RaiseExitRequested()
+        {
+            EventHandler handler = ExitRequested;
+            if (handler != null) handler(this, EventArgs.Empty);
+        }
+
         protected override void WndProc(ref Message message)
         {
             if (message.Msg == 0x8001)
             {
                 NativeMethods.MoveTrackedOverlay();
+            }
+            else if (message.Msg == WM_CLOSE)
+            {
+                // Closing only this form would leave a tray icon with no button behind it.
+                RaiseExitRequested();
+                return;
+            }
+            else if (message.Msg == WM_ENDSESSION && message.WParam != IntPtr.Zero)
+            {
+                RaiseExitRequested();
             }
             base.WndProc(ref message);
         }
@@ -506,6 +620,12 @@ $overlay.Size = [System.Drawing.Size]::new($script:buttonWidth, $script:buttonHe
 $overlay.BackColor = $script:chromeBackground
 $overlay.Cursor = [System.Windows.Forms.Cursors]::Hand
 $overlay.Visible = $false
+# A borderless window never shows its caption text; the fixed title lets the installer
+# and uninstaller find this window (FindWindow) and ask the tool to exit cleanly
+# with WM_CLOSE. Create the hidden window now so that works before the button has
+# ever been shown.
+$overlay.Text = 'LazyPin.PinButton'
+[void]$overlay.Handle
 $pinFont = [System.Drawing.Font]::new(
     'Segoe MDL2 Assets',
     [single]11,
@@ -561,7 +681,8 @@ $overlay.Add_MouseClick({
     param($sender, $eventArgs)
     if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
     $hwnd = $script:targetHwnd
-    if ($hwnd -eq [IntPtr]::Zero -or -not [LazyPin.NativeMethods]::IsWindow($hwnd)) { return }
+    # Never touch the z-order of a shell window: making the taskbar NOTOPMOST would hide it.
+    if (-not [LazyPin.NativeMethods]::IsEligibleTarget($hwnd, [uint32]$PID)) { return }
     # SetWindowPos on a foreign window is synchronous; a hung target would block this tool too.
     if ([LazyPin.NativeMethods]::IsHungAppWindow($hwnd)) { return }
     if ($script:pinnedHwnd -ne $hwnd) {
@@ -591,7 +712,8 @@ $overlay.Add_MouseClick({
             $script:pinnedHwnd = $hwnd
             $buttonTooltip.SetToolTip($overlay, 'Unpin this window')
         } else {
-            $script:pinnedHwnd = [IntPtr]::Zero
+            # Unpinning some other always-on-top window must not forget the one LazyPin pinned.
+            if ($script:pinnedHwnd -eq $hwnd) { $script:pinnedHwnd = [IntPtr]::Zero }
             $buttonTooltip.SetToolTip($overlay, 'Keep this window on top')
         }
         $overlay.Invalidate()
@@ -610,7 +732,7 @@ $null = $trayMenu.Items.Add([System.Windows.Forms.ToolStripSeparator]::new())
 $aboutItem = [System.Windows.Forms.ToolStripMenuItem]::new('About LazyPin')
 $aboutItem.Add_Click({
     [System.Windows.Forms.MessageBox]::Show(
-        "LazyPin v1.0.3`n`nDeveloper: Raisul Sohan`nGitHub: https://github.com/raisulsohan/LazyPin`n`nA lightweight utility to keep any window always on top.",
+        "LazyPin v1.0.4`n`nDeveloper: Raisul Sohan`nGitHub: https://github.com/raisulsohan/LazyPin`n`nA lightweight utility to keep any window always on top.",
         "About LazyPin",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
@@ -650,17 +772,45 @@ $startupItem.Add_Click({
 
 $trayIcon = [System.Windows.Forms.NotifyIcon]::new()
 $trayIcon.Icon = $script:applicationIcon
-$trayIcon.Text = 'LazyPin v1.0.3 by Raisul Sohan'
+$trayIcon.Text = 'LazyPin v1.0.4 by Raisul Sohan'
 $trayIcon.ContextMenuStrip = $trayMenu
 $trayIcon.Visible = $true
 $appContext = [System.Windows.Forms.ApplicationContext]::new()
-$exitItem.Add_Click({
+
+# One exit path for the tray menu, Windows sign-out/shutdown and installer or
+# "taskkill" close requests: give the pinned window its normal z-order back (there is
+# no button left to unpin it with once LazyPin is gone), remove the tray icon (a killed
+# process leaves a ghost icon until the mouse passes over it) and stop the loop.
+function Invoke-LazyPinExit {
+    if ($script:shuttingDown) { return }
     $script:shuttingDown = $true
-    $overlay.Hide()
+    try {
+        $pinned = $script:pinnedHwnd
+        if ($pinned -ne [IntPtr]::Zero -and
+            [LazyPin.NativeMethods]::IsWindow($pinned) -and
+            [LazyPin.NativeMethods]::IsTopmost($pinned) -and
+            -not [LazyPin.NativeMethods]::IsHungAppWindow($pinned)) {
+            # Asynchronous so a slow target cannot hold up shutdown.
+            [void][LazyPin.NativeMethods]::SetWindowPos(
+                $pinned,
+                [LazyPin.NativeMethods]::HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                [LazyPin.NativeMethods]::SWP_NOMOVE -bor [LazyPin.NativeMethods]::SWP_NOSIZE -bor [LazyPin.NativeMethods]::SWP_NOACTIVATE -bor [LazyPin.NativeMethods]::SWP_ASYNCWINDOWPOS
+            )
+        }
+    } catch { }
+    $script:pinnedHwnd = [IntPtr]::Zero
+    try { if ($overlay.Visible) { $overlay.Hide() } } catch { }
     [LazyPin.NativeMethods]::StopWindowLocationTracking()
-    $trayIcon.Visible = $false
+    try { $trayIcon.Visible = $false } catch { }
     $appContext.ExitThread()
-})
+}
+
+$exitItem.Add_Click({ Invoke-LazyPinExit })
+$overlay.Add_ExitRequested({ Invoke-LazyPinExit })
 
 $timer = [System.Windows.Forms.Timer]::new()
 $timer.Interval = 33
@@ -668,33 +818,41 @@ $timer.Add_Tick({
     if ($script:shuttingDown) { return }
     try {
 
+    $ownProcessId = [uint32]$PID
+    $foreground = [LazyPin.NativeMethods]::GetForegroundWindow()
+    if ($foreground -ne [IntPtr]::Zero) {
+        $root = [LazyPin.NativeMethods]::GetAncestor($foreground, [LazyPin.NativeMethods]::GA_ROOT)
+        if ($root -ne [IntPtr]::Zero) { $foreground = $root }
+    }
+
+    # Forget the remembered pin as soon as that window is gone or something else un-topped it.
+    if ($script:pinnedHwnd -ne [IntPtr]::Zero -and
+        (-not [LazyPin.NativeMethods]::IsWindow($script:pinnedHwnd) -or
+         -not [LazyPin.NativeMethods]::IsTopmost($script:pinnedHwnd))) {
+        $script:pinnedHwnd = [IntPtr]::Zero
+        $script:isPinned = $false
+    }
+
+    # Target priority:
+    #   1. the focused window when it is itself on top, so any pinned window can be
+    #      unpinned simply by focusing it;
+    #   2. the window LazyPin pinned, while it is actually on screen (a minimised or
+    #      cloaked pinned window must not take the button away from every other window);
+    #   3. the focused window.
+    # Shell surfaces (taskbar, Start, Task View, desktop...) are never targets.
     $hwnd = [IntPtr]::Zero
-    if ($script:pinnedHwnd -ne [IntPtr]::Zero) {
-        if ([LazyPin.NativeMethods]::IsWindow($script:pinnedHwnd)) {
-            $pinnedStyle = [LazyPin.NativeMethods]::GetWindowLongPtr($script:pinnedHwnd, [LazyPin.NativeMethods]::GWL_EXSTYLE).ToInt64()
-            if (($pinnedStyle -band [LazyPin.NativeMethods]::WS_EX_TOPMOST) -ne 0) {
-                $hwnd = $script:pinnedHwnd
-            }
-        }
-        if ($hwnd -eq [IntPtr]::Zero) {
-            $script:pinnedHwnd = [IntPtr]::Zero
-            $script:isPinned = $false
-        }
+    if ($foreground -ne [IntPtr]::Zero -and
+        [LazyPin.NativeMethods]::IsTopmost($foreground) -and
+        [LazyPin.NativeMethods]::IsEligibleTarget($foreground, $ownProcessId)) {
+        $hwnd = $foreground
+    } elseif ($script:pinnedHwnd -ne [IntPtr]::Zero -and
+        [LazyPin.NativeMethods]::IsEligibleTarget($script:pinnedHwnd, $ownProcessId)) {
+        $hwnd = $script:pinnedHwnd
+    } else {
+        $hwnd = $foreground
     }
 
-    if ($hwnd -eq [IntPtr]::Zero) {
-        $foreground = [LazyPin.NativeMethods]::GetForegroundWindow()
-        $hwnd = [LazyPin.NativeMethods]::GetAncestor($foreground, [LazyPin.NativeMethods]::GA_ROOT)
-        if ($hwnd -eq [IntPtr]::Zero) { $hwnd = $foreground }
-    }
-
-    $processId = [uint32]0
-    [void][LazyPin.NativeMethods]::GetWindowThreadProcessId($hwnd, [ref]$processId)
-    if ($hwnd -eq [IntPtr]::Zero -or
-        $processId -eq [uint32]$PID -or
-        -not [LazyPin.NativeMethods]::IsWindow($hwnd) -or
-        -not [LazyPin.NativeMethods]::IsWindowVisible($hwnd) -or
-        [LazyPin.NativeMethods]::IsIconic($hwnd)) {
+    if (-not [LazyPin.NativeMethods]::IsEligibleTarget($hwnd, $ownProcessId)) {
         if ($overlay.Visible) { $overlay.Hide() }
         $script:targetHwnd = [IntPtr]::Zero
         [void][LazyPin.NativeMethods]::TrackWindowLocation([IntPtr]::Zero, [IntPtr]::Zero, 0, 0, 0, 0)
@@ -907,7 +1065,12 @@ $timer.Add_Tick({
         if ($overlay.Size.Width -ne $bounds.Width -or $overlay.Size.Height -ne $bounds.Height) {
             $overlay.Size = $bounds.Size
         }
-        if (-not $overlay.Visible) { $overlay.Show() }
+        if (-not $overlay.Visible) {
+            # Move the hidden window first so its very first frame already sits beside
+            # the caption buttons instead of flashing at its previous position.
+            $overlay.Bounds = $bounds
+            $overlay.Show()
+        }
         [void][LazyPin.NativeMethods]::SetWindowPos(
             $overlay.Handle,
             [LazyPin.NativeMethods]::HWND_TOPMOST,
