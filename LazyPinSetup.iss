@@ -1,5 +1,8 @@
 #define MyAppName "LazyPin"
-#define MyAppVersion "1.0.4"
+; Build.ps1 passes the version from AppInfo.Version in LazyPin.cs (/DMyAppVersion=...).
+#ifndef MyAppVersion
+  #define MyAppVersion "1.1.0"
+#endif
 #define MyAppExeName "LazyPin.exe"
 
 [Setup]
@@ -26,7 +29,7 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=LazyPin.ico
 LicenseFile=LICENSE
-VersionInfoVersion=1.0.4.0
+VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany=Raisul Sohan
 VersionInfoCopyright=Copyright (C) 2026 Raisul Sohan
 VersionInfoProductName={#MyAppName}
@@ -43,8 +46,6 @@ Source: "LazyPin.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LazyPin.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "LazyPin.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Start LazyPin.cmd"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -66,6 +67,9 @@ Type: files; Name: "{app}\Start Pin to top.cmd"
 Type: files; Name: "{userstartup}\Pin to top.lnk"
 Type: files; Name: "{userprograms}\Pin to top.lnk"
 Type: files; Name: "{userdesktop}\Pin to top.lnk"
+; Leftovers of the 1.0.x builds, which ran LazyPin.ps1 inside PowerShell. 1.1 is a native program.
+Type: files; Name: "{app}\LazyPin.ps1"
+Type: files; Name: "{app}\Start LazyPin.cmd"
 
 [Code]
 const
