@@ -23,12 +23,14 @@
 
 - **Seamless Native Design**: Matches the exact size, border radius, title bar background color, and theme of standard Windows 10 & 11 caption controls.
 - **Single-Click Pin Toggle**: Click the pin icon to keep the active window **Always on top**. Click again to unpin and restore normal z-order.
+- **Pin Several Windows**: Pin as many windows as you like. The one you pinned or clicked last is in front, exactly as Windows orders any windows. **Unpin all windows** in the tray menu (or `LazyPin.exe --unpin-all`, for a shortcut or a script) releases them all at once.
 - **Accurate Window Tracking**: Stays locked firmly in place beside caption buttons with zero jitter during live window movement and resizing.
 - **Intelligent App Adaptation**:
   - Automatically aligns with native Windows software (File Explorer, Notepad, Settings).
   - Dynamically detects custom caption controls in modern apps and web browsers (Chrome, Edge, Claude Desktop, etc.) so it never overlaps existing buttons.
 - **Fullscreen Intelligence**: Automatically hides when entering full-screen apps, games, media players, or F11 browser views to avoid disrupting full-screen experiences.
-- **System Tray Integration**: Operates quietly in the notification area without cluttering your taskbar. Right-click the tray icon to toggle Windows startup, view developer info, or exit.
+- **System Tray Integration**: Operates quietly in the notification area without cluttering your taskbar. Right-click the tray icon to unpin all windows, toggle Windows startup, view developer info, or exit.
+- **Light and Self-Healing**: A small native program that reacts to window events instead of polling, uses about 25 MB of memory and around 0.1 % of one CPU core, and restarts itself if it ever gets stuck on an app that stops responding.
 - **Zero Admin Rights Required**: Installs directly into your local user directory without triggering UAC prompt restrictions.
 
 ---
@@ -43,8 +45,8 @@ Download **`LazyPinSetup.exe`** from the [Latest Release](https://github.com/rai
 4. **Uninstall anytime**: Can be cleanly uninstalled from Windows **Settings > Apps > Installed apps**.
 
 ### Option 2: Portable
-1. Download **`LazyPin-v1.0.4-portable.zip`** from [Releases](https://github.com/raisulsohan/LazyPin/releases/latest).
-2. Extract the archive and double-click `LazyPin.exe` (or `Start LazyPin.cmd`).
+1. Download **`LazyPin-v1.1.0-portable.zip`** from [Releases](https://github.com/raisulsohan/LazyPin/releases/latest).
+2. Extract the archive and double-click `LazyPin.exe`.
 
 ---
 
@@ -55,6 +57,7 @@ Download **`LazyPinSetup.exe`** from the [Latest Release](https://github.com/rai
 3. Click the pin button:
    - 📌 **Pinned**: The button highlights with an active accent color, and the window stays pinned on top of all other windows even if you focus another app.
    - 📌 **Unpinned**: Click once more to return the window to standard behavior.
+4. The button always sits on the window you are using, so you can pin more windows one after another. To unpin one of them, click it and then click its pin button, or use **Unpin all windows** in the tray menu.
 
 ---
 
@@ -62,14 +65,12 @@ Download **`LazyPinSetup.exe`** from the [Latest Release](https://github.com/rai
 
 To build `LazyPin.exe` and `LazyPinSetup.exe` from source:
 
+LazyPin is a single C# file (`LazyPin.cs`). It is compiled with the C# compiler of the .NET Framework 4.x that is part of every Windows 10 and 11 installation, so no SDK or extra module is needed.
+
 ### Prerequisites
 - Windows 10 or 11 (64-bit)
-- Windows PowerShell 5.1+
-- [PS2EXE](https://github.com/MScholtes/PS2EXE) module:
-  ```powershell
-  Install-Module ps2exe -Scope CurrentUser
-  ```
-- [Inno Setup 6](https://jrsoftware.org/isdl.php) (for compiling the installer)
+- Windows PowerShell 5.1+ (runs `Build.ps1`)
+- [Inno Setup 6](https://jrsoftware.org/isdl.php) (for compiling the installer only)
 
 ### Build Command
 Simply run:
@@ -80,11 +81,29 @@ or run via PowerShell:
 ```powershell
 .\Build.ps1
 ```
-This automatically compiles `LazyPin.exe` and packages `LazyPinSetup.exe` in the root folder.
+This automatically compiles `LazyPin.exe` and packages `LazyPinSetup.exe` in the root folder. Use `.\Build.ps1 -SkipInstaller` to build only `LazyPin.exe`. The version number lives in one place, `AppInfo.Version` in `LazyPin.cs`; the installer takes it from there.
+
+---
+
+## 🩺 Troubleshooting
+
+LazyPin keeps a small log (start, stop, recoveries and errors) in `%LOCALAPPDATA%\LazyPin\LazyPin.log`. If something goes wrong, that file shows what happened. For a detailed trace of every measurement and button move, start LazyPin with the environment variable `LAZYPIN_TRACE=1`.
 
 ---
 
 ## 📝 Changelog
+
+### v1.1.0
+- **New**: pin several windows at once. The pin button now always sits on the focused window (before, it stayed on the one pinned window, so a second window could not be pinned). Windows keeps the pinned windows in their natural order: the one pinned or clicked last is in front.
+- **New**: **Unpin all windows** in the tray menu, and `LazyPin.exe --unpin-all` for shortcuts and scripts. Exiting LazyPin also unpins every window it pinned.
+- **Rebuilt as a native program**: LazyPin no longer runs a PowerShell script inside a PS2EXE wrapper. It uses about a third of the memory (25 MB instead of 70 MB) and about a fifth of the CPU time, starts in a fraction of a second, and no longer uses the PS2EXE wrapper that antivirus tools often flag.
+- **No more polling**: window events (focus, move, resize, minimise, close, virtual desktop switch) move the button at once; a slow timer only covers the few changes Windows does not report.
+- **Fixed**: the button no longer trails or wobbles while a window is dragged. It follows within about 2 ms (before: up to 140 ms), and it no longer jumps by a few pixels when Windows reports the frame position a frame late.
+- **Fixed**: the button no longer jumps onto a browser's title-bar icons while the browser is busy, and it remembers each window's layout, so it lands in the right place at once when you switch back.
+- **Fixed**: an app that answers slowly can no longer freeze LazyPin. Title-bar measurement is capped at 50 ms, screen colour reads run on a background thread, and pinning a busy app is queued instead of waited for.
+- **Self-healing**: if LazyPin ever gets stuck (for example on an app that hangs while being pinned), a watchdog starts a fresh copy within about 35 seconds and the stuck one is closed. Before, the button stayed frozen until the next sign-in.
+- **New**: on a window that runs as administrator, which Windows does not let a normal program pin, the button is dimmed and explains why.
+- **New**: errors are written to a log file instead of being lost.
 
 ### v1.0.4
 - **Fixed**: the pin button no longer attaches itself to the taskbar (beside the clock), Start menu, Task View, desktop or other Windows shell surfaces when they take focus. The taskbar is a permanently always-on-top window, so the button used to appear there in its "pinned" colour, and clicking it could un-top the taskbar.
